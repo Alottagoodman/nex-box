@@ -1,6 +1,6 @@
 [package]
 name = "nex-box"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["The Trinity <nex@permanexus.org>"]
 description = "Sub-millisecond Copy-on-Write ephemeral sandbox runtime for autonomous coding agents."
