@@ -1,0 +1,29 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "nex-box"
+version = "0.1.0"
+description = "Sub-millisecond Copy-on-Write ephemeral sandbox runtime for autonomous coding agents."
+authors = [{ name = "The Trinity", email = "nex@permanexus.org" }]
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT OR Apache-2.0" }
+keywords = ["sandbox", "agent", "cow", "reflink", "testing", "apfs"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Security",
+]
+
+[tool.maturin]
+features = ["python", "extension-module"]
+module-name = "nex_box"

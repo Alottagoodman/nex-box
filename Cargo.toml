@@ -1,0 +1,38 @@
+[package]
+name = "nex-box"
+version = "0.1.0"
+edition = "2021"
+authors = ["The Trinity <nex@permanexus.org>"]
+description = "Sub-millisecond Copy-on-Write ephemeral sandbox runtime for autonomous coding agents."
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "nex_box"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "nex-box"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive", "cargo"] }
+blake3 = { version = "1.5", features = ["rayon"] }
+libc = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.10", features = ["v4", "fast-rng"] }
+walkdir = "2.5"
+colored = "2.1"
+pyo3 = { version = "0.22", optional = true }
+
+[features]
+default = []
+python = ["dep:pyo3"]
+extension-module = ["pyo3/extension-module"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
