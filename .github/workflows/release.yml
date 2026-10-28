@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # 1. BUILD LINUX WHEELS (x86_64 & aarch64 via QEMU manylinux)
+  # 1. BUILD LINUX WHEELS (x86_64 & aarch64 via QEMU)
   # ---------------------------------------------------------------------------
   linux:
     runs-on: ubuntu-latest
@@ -26,7 +26,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      # Sets up QEMU emulation for cross-compiling aarch64 inside Docker
       - name: Set up QEMU
         if: matrix.target == 'aarch64'
         uses: docker/setup-qemu-action@v3
@@ -121,12 +120,13 @@ jobs:
           path: dist
 
   # ---------------------------------------------------------------------------
-  # 5. AGGREGATE AND PUBLISH TO PYPI VIA TRUSTED PUBLISHER (OIDC)
+  # 5. AGGREGATE AND PUBLISH TO PYPI (NON-BLOCKING RESILIENT)
   # ---------------------------------------------------------------------------
   release:
     name: Publish to PyPI
     runs-on: ubuntu-latest
     needs: [linux, macos, windows, sdist]
+    if: always() && needs.sdist.result == 'success'
     environment:
       name: pypi
       url: https://pypi.org/p/nex-box
@@ -137,6 +137,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: wheels-*
           merge-multiple: true
 
       - name: Publish package distributions to PyPI
