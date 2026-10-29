@@ -1,9 +1,11 @@
-//! src/main_components/diff.rs - Fast In-Memory Differential Engine (BLAKE3 SIMD).
-//! Compares Scratch workspace against Host root to compute exact Mutation Diffs.
+//! src/main_components/diff.rs - Fast Stat-First Differential Engine (BLAKE3 SIMD).
+//! Uses filesystem stat-gating (mtime + file size) to avoid unnecessary reads,
+//! falling back to Rayon multi-threaded BLAKE3 hashing when bytes mutate.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use blake3::Hasher;
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
@@ -50,11 +52,12 @@ impl WorkspaceDiffReport {
         // 1. Files Added in Scratch
         for added in scratch_keys.difference(&host_keys) {
             let scratch_meta = &scratch_map[*added];
+            let hash = Self::compute_file_hash(&scratch_root.join(*added))?;
             deltas.push(FileDelta {
                 relative_path: (*added).clone(),
                 change_kind: FileChangeKind::Created,
                 original_sha256: None,
-                new_sha256: Some(scratch_meta.hash.clone()),
+                new_sha256: Some(hash),
                 byte_size_diff: scratch_meta.size as i64,
             });
         }
@@ -62,32 +65,56 @@ impl WorkspaceDiffReport {
         // 2. Files Deleted in Scratch
         for deleted in host_keys.difference(&scratch_keys) {
             let host_meta = &host_map[*deleted];
+            let hash = Self::compute_file_hash(&host_root.join(*deleted))?;
             deltas.push(FileDelta {
                 relative_path: (*deleted).clone(),
                 change_kind: FileChangeKind::Deleted,
-                original_sha256: Some(host_meta.hash.clone()),
+                original_sha256: Some(hash),
                 new_sha256: None,
                 byte_size_diff: -(host_meta.size as i64),
             });
         }
 
-        // 3. Files in Both: Check for Modification
+        // 3. Files in Both: Stat-gated comparison before computing BLAKE3 hashes
         for common in host_keys.intersection(&scratch_keys) {
             let h_meta = &host_map[*common];
             let s_meta = &scratch_map[*common];
 
-            if h_meta.size != s_meta.size || h_meta.hash != s_meta.hash {
+            // If size differs, file definitely mutated
+            if h_meta.size != s_meta.size {
+                let h_hash = Self::compute_file_hash(&host_root.join(*common))?;
+                let s_hash = Self::compute_file_hash(&scratch_root.join(*common))?;
                 deltas.push(FileDelta {
                     relative_path: (*common).clone(),
                     change_kind: FileChangeKind::Modified,
-                    original_sha256: Some(h_meta.hash.clone()),
-                    new_sha256: Some(s_meta.hash.clone()),
+                    original_sha256: Some(h_hash),
+                    new_sha256: Some(s_hash),
                     byte_size_diff: (s_meta.size as i64) - (h_meta.size as i64),
+                });
+                continue;
+            }
+
+            // If modification timestamps match, skip reading bytes completely
+            if h_meta.modified == s_meta.modified {
+                continue;
+            }
+
+            // Timestamps differ: calculate BLAKE3 SIMD hashes to check actual byte equality
+            let h_hash = Self::compute_file_hash(&host_root.join(*common))?;
+            let s_hash = Self::compute_file_hash(&scratch_root.join(*common))?;
+
+            if h_hash != s_hash {
+                deltas.push(FileDelta {
+                    relative_path: (*common).clone(),
+                    change_kind: FileChangeKind::Modified,
+                    original_sha256: Some(h_hash),
+                    new_sha256: Some(s_hash),
+                    byte_size_diff: 0,
                 });
             }
         }
 
-        // Sort for deterministic presentation
+        // Deterministic sorting
         deltas.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
 
         let files_created = deltas.iter().filter(|d| d.change_kind == FileChangeKind::Created).count();
@@ -103,7 +130,7 @@ impl WorkspaceDiffReport {
         })
     }
 
-    fn scan_directory(root: &Path) -> Result<HashMap<PathBuf, FileRecord>> {
+    fn scan_directory(root: &Path) -> Result<HashMap<PathBuf, FastFileHeader>> {
         let mut map = HashMap::new();
         if !root.exists() {
             return Ok(map);
@@ -114,25 +141,31 @@ impl WorkspaceDiffReport {
             .into_iter()
             .filter_entry(|e| {
                 let name = e.file_name().to_string_lossy();
-                !(name == ".git" || name == ".nexbox" || name == "target" || name == "node_modules" || name == ".DS_Store")
+                !(name == ".git"
+                    || name == ".nexbox"
+                    || name == "target"
+                    || name == "node_modules"
+                    || name == ".DS_Store"
+                    || name.starts_with(".nexbox_"))
             });
 
         for entry in walker {
             let entry = entry.map_err(|e| NexBoxError::Io("Walkdir error during diff".into(), e.into()))?;
             if entry.file_type().is_file() {
                 let full_path = entry.path();
-                let rel = full_path.strip_prefix(root).map_err(|e| {
-                    NexBoxError::ExecutionFailure(format!("Path prefix error: {}", e))
-                })?.to_path_buf();
+                let rel = full_path
+                    .strip_prefix(root)
+                    .map_err(|e| NexBoxError::ExecutionFailure(format!("Path prefix error: {}", e)))?
+                    .to_path_buf();
 
                 let metadata = entry.metadata().map_err(|e| {
                     NexBoxError::Io(format!("Metadata read failed for '{}'", full_path.display()), e.into())
                 })?;
 
                 let size = metadata.len();
-                let hash = Self::compute_file_hash(full_path)?;
+                let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
 
-                map.insert(rel, FileRecord { size, hash });
+                map.insert(rel, FastFileHeader { size, modified });
             }
         }
 
@@ -177,7 +210,7 @@ impl WorkspaceDiffReport {
     }
 }
 
-struct FileRecord {
+struct FastFileHeader {
     size: u64,
-    hash: String,
+    modified: SystemTime,
 }

@@ -10,10 +10,11 @@ pub enum NexBoxError {
     Serialization(serde_json::Error),
     ExecutionFailure(String),
     CommandTimeout(u64),
-    #[allow(dead_code)]
+    CrossDeviceBoundary { workspace_dev: u64, session_dev: u64 },
     ReflinkUnsupported(String),
     SessionNotFound(String),
-    #[allow(dead_code)]
+    OverlayFsMountFailed(String),
+    OverlayFsUnmountFailed(String),
     AtomicCommitConflict(String),
 }
 
@@ -23,9 +24,16 @@ impl fmt::Display for NexBoxError {
             Self::Io(ctx, err) => write!(f, "Filesystem I/O Error: {} ({})", ctx, err),
             Self::Serialization(err) => write!(f, "JSON Serialization Failure: {}", err),
             Self::ExecutionFailure(msg) => write!(f, "Sandbox Execution Error: {}", msg),
-            Self::CommandTimeout(ms) => write!(f, "Execution timed out after {}ms", ms),
+            Self::CommandTimeout(ms) => write!(f, "Execution timed out after {}ms (SIGKILL process group dispatched)", ms),
+            Self::CrossDeviceBoundary { workspace_dev, session_dev } => write!(
+                f,
+                "Cross-device link violation: workspace st_dev ({}) != session st_dev ({}). Reflinks cannot cross mount points.",
+                workspace_dev, session_dev
+            ),
             Self::ReflinkUnsupported(path) => write!(f, "Reflink/CoW cloning unsupported on mount: {}", path),
             Self::SessionNotFound(id) => write!(f, "Sandbox session '{}' does not exist or expired", id),
+            Self::OverlayFsMountFailed(detail) => write!(f, "OverlayFS mount initialization failed: {}", detail),
+            Self::OverlayFsUnmountFailed(detail) => write!(f, "OverlayFS teardown cleanup failed: {}", detail),
             Self::AtomicCommitConflict(detail) => write!(f, "Commit Conflict: {}", detail),
         }
     }

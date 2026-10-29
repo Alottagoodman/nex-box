@@ -34,6 +34,7 @@ fn run_orchestrator(cli: Cli) -> Result<i32> {
             json,
             preserve,
             allow_net,
+            strategy,
         } => {
             if command.is_empty() {
                 return Err(NexBoxError::ExecutionFailure("No command provided to execute.".into()));
@@ -51,6 +52,7 @@ fn run_orchestrator(cli: Cli) -> Result<i32> {
                 auto_commit: commit,
                 preserve_scratch: preserve,
                 json_telemetry: json,
+                enforced_strategy: strategy,
             };
 
             let session = SandboxSession::initialize(&workspace_root, policy)?;

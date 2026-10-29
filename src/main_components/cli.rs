@@ -1,6 +1,16 @@
 //! src/main_components/cli.rs - Ergonomic CLI definition matching Astral/uv standards.
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+use serde::{Deserialize, Serialize};
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StrategyOpt {
+    Auto,
+    Reflink,
+    Overlay,
+    Copy,
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -10,7 +20,8 @@ use clap::{Parser, Subcommand};
     about = "Sub-millisecond Copy-on-Write ephemeral sandbox runtime for autonomous coding agents.",
     long_about = "nex-box provides zero-latency, kernel-level CoW execution sandboxes for AI agents.\n\
                   It allows agents to run builds, test suites, and destructive edits in isolated scratch\n\
-                  environments backed by APFS/FICLONE reflinks, guaranteeing instant atomic commits and rollbacks."
+                  environments backed by APFS/FICLONE reflinks or OverlayFS, guaranteeing instant atomic\n\
+                  commits and clean rollbacks."
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -49,6 +60,10 @@ pub enum Commands {
         /// Allow outbound network sockets (default: enabled; pass false to isolate network).
         #[arg(long = "allow-net", default_value_t = true)]
         allow_net: bool,
+
+        /// Explicitly enforce isolation backend strategy (auto, reflink, overlay, copy).
+        #[arg(long = "strategy", value_enum, default_value_t = StrategyOpt::Auto)]
+        strategy: StrategyOpt,
     },
 
     /// Inspect the uncommitted file differences of an existing preserved sandbox session.

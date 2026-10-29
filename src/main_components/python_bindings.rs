@@ -8,6 +8,8 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
 #[cfg(feature = "python")]
+use super::cli::StrategyOpt;
+#[cfg(feature = "python")]
 use super::diff::FileChangeKind;
 #[cfg(feature = "python")]
 use super::error::NexBoxError;
@@ -56,6 +58,8 @@ pub struct PySandboxOutcome {
     #[pyo3(get)]
     pub clone_duration_micros: u128,
     #[pyo3(get)]
+    pub strategy: String,
+    #[pyo3(get)]
     pub committed: bool,
     #[pyo3(get)]
     pub stdout: String,
@@ -70,8 +74,8 @@ pub struct PySandboxOutcome {
 impl PySandboxOutcome {
     pub fn __repr__(&self) -> String {
         format!(
-            "SandboxOutcome(exit_code={}, duration_ms={}ms, committed={}, files_cloned={})",
-            self.exit_code, self.duration_ms, self.committed, self.files_cloned
+            "SandboxOutcome(exit_code={}, duration_ms={}ms, committed={}, strategy='{}', files_cloned={})",
+            self.exit_code, self.duration_ms, self.committed, self.strategy, self.files_cloned
         )
     }
 
@@ -89,20 +93,36 @@ impl PySandboxOutcome {
 /// - timeout_ms: int, timeout in milliseconds (default: 60000)
 /// - allow_net: bool, allow outbound network access (default: True)
 /// - preserve: bool, keep scratch directory for debugging (default: False)
+/// - strategy: str, isolation strategy: "auto", "reflink", "overlay", "copy" (default: "auto")
 #[cfg(feature = "python")]
 #[pyfunction]
-#[pyo3(signature = (command, cwd=None, commit=false, timeout_ms=60000, allow_net=true, preserve=false))]
+#[pyo3(signature = (command, cwd=None, commit=false, timeout_ms=60000, allow_net=true, preserve=false, strategy="auto"))]
 pub fn run(
+    py: Python<'_>,
     command: Vec<String>,
     cwd: Option<String>,
     commit: bool,
     timeout_ms: u64,
     allow_net: bool,
     preserve: bool,
+    strategy: &str,
 ) -> PyResult<PySandboxOutcome> {
     if command.is_empty() {
         return Err(PyRuntimeError::new_err("Command list cannot be empty"));
     }
+
+    let strat = match strategy.to_lowercase().as_str() {
+        "auto" => StrategyOpt::Auto,
+        "reflink" => StrategyOpt::Reflink,
+        "overlay" => StrategyOpt::Overlay,
+        "copy" => StrategyOpt::Copy,
+        other => {
+            return Err(PyRuntimeError::new_err(format!(
+                "Invalid strategy '{}'. Must be one of: 'auto', 'reflink', 'overlay', 'copy'",
+                other
+            )))
+        }
+    };
 
     let workspace_root = cwd
         .map(PathBuf::from)
@@ -116,19 +136,23 @@ pub fn run(
         auto_commit: commit,
         preserve_scratch: preserve,
         json_telemetry: true,
+        enforced_strategy: strat,
     };
 
-    let session = SandboxSession::initialize(&workspace_root, policy)
-        .map_err(|e| PyRuntimeError::new_err(format!("Sandbox initialization error: {}", e)))?;
+    // Release Python GIL during kernel cloning, command execution, and differential hashing
+    let outcome = py.allow_threads(|| {
+        let session = SandboxSession::initialize(&workspace_root, policy)
+            .map_err(|e| format!("Sandbox initialization error: {}", e))?;
 
-    let outcome = session
-        .execute(&command)
-        .map_err(|e| match e {
-            NexBoxError::CommandTimeout(ms) => {
-                PyRuntimeError::new_err(format!("Execution timed out after {}ms", ms))
-            }
-            other => PyRuntimeError::new_err(format!("Execution failure: {}", other)),
-        })?;
+        session
+            .execute(&command)
+            .map_err(|e| match e {
+                NexBoxError::CommandTimeout(ms) => {
+                    format!("Execution timed out after {}ms (killpg dispatched)", ms)
+                }
+                other => format!("Execution failure: {}", other),
+            })
+    }).map_err(PyRuntimeError::new_err)?;
 
     let mut created = Vec::new();
     let mut modified = Vec::new();
@@ -156,6 +180,7 @@ pub fn run(
         duration_ms: outcome.duration_ms,
         files_cloned: outcome.files_cloned,
         clone_duration_micros: outcome.clone_duration_micros,
+        strategy: outcome.strategy,
         committed: outcome.committed,
         stdout: outcome.stdout_capture,
         stderr: outcome.stderr_capture,
