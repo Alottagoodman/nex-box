@@ -1,34 +1,35 @@
 [package]
 name = "nex-box"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
-authors = ["The Trinity <nex@permanexus.org>"]
+authors = ["The Trinity <inquiries@houseoflawpc.com>"]
 description = "Sub-millisecond Copy-on-Write ephemeral sandbox runtime for autonomous coding agents."
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/houseoflawpc/nex-box"
+homepage = "https://github.com/houseoflawpc/nex-box"
+readme = "README.md"
+keywords = ["sandbox", "agent", "cow", "reflink", "testing"]
+categories = ["development-tools::testing", "filesystem"]
 
 [lib]
 name = "nex_box"
 crate-type = ["cdylib", "rlib"]
 
-[[bin]]
-name = "nex-box"
-path = "src/main.rs"
-
 [dependencies]
-clap = { version = "4.5", features = ["derive", "cargo"] }
-blake3 = { version = "1.5", features = ["rayon"] }
+pyo3 = { version = "0.22", features = ["abi3-py38"], optional = true }
+blake3 = "1.5"
 rayon = "1.10"
+walkdir = "2.5"
 libc = "0.2"
+nix = { version = "0.29", features = ["fs", "process", "signal"] }
+clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-uuid = { version = "1.10", features = ["v4", "fast-rng"] }
-walkdir = "2.5"
 colored = "2.1"
-which = "6.0"
-pyo3 = { version = "0.22", optional = true }
+uuid = { version = "1.8", features = ["v4"] }
 
 [features]
-default = []
+default = ["python"]
 python = ["dep:pyo3"]
 extension-module = ["pyo3/extension-module"]
 

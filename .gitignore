@@ -22,3 +22,8 @@ build/
 .DS_Store
 .DS_Store?
 ._*
+
+nabre.*
+agent_output.py
+compiled_quine_artifacts/
+*.arrow

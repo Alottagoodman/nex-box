@@ -4,9 +4,9 @@ build-backend = "maturin"
 
 [project]
 name = "nex-box"
-version = "0.2.0"
+version = "0.2.1"
 description = "Sub-millisecond Copy-on-Write ephemeral sandbox runtime for autonomous coding agents."
-authors = [{ name = "The Trinity", email = "nex@permanexus.org" }]
+authors = [{ name = "The Trinity", email = "inquiries@houseoflawpc.com" }]
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT OR Apache-2.0" }
@@ -23,6 +23,11 @@ classifiers = [
     "Topic :: Software Development :: Testing",
     "Topic :: Security",
 ]
+
+[project.urls]
+Homepage = "https://github.com/houseoflawpc/nex-box"
+Documentation = "https://github.com/houseoflawpc/nex-box#readme"
+Repository = "https://github.com/houseoflawpc/nex-box.git"
 
 [tool.maturin]
 features = ["python", "extension-module"]
